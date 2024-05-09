@@ -1,0 +1,67 @@
+{
+  "$schema": "https://github.com/Azure/data-api-builder/releases/latest/download/dab.draft.schema.json",
+  "data-source": {
+    "database-type": "mssql",
+    "connection-string": "<CONNECTIONSTRING>"
+  },
+  "entities": {
+    "cart": {
+      "source": "dbo.CartItems",
+      "permissions": [
+        {
+          "actions": [
+            "read",
+            "write"
+          ],
+          "role": "anonymous"
+        }
+      ]
+    },
+    "category": {
+      "source": "dbo.Categories",
+      "permissions": [
+        {
+          "actions": [
+            "read"
+          ],
+          "role": "anonymous"
+        }
+      ]
+    },
+    "order": {
+      "source": "dbo.Orders",
+      "permissions": [
+        {
+          "actions": [
+            "read",
+            "write"
+          ],
+          "role": "anonymous"
+        }
+      ]
+    },
+    "product": {
+      "source": "dbo.Products",
+      "permissions": [
+        {
+          "actions": [
+            "read"
+          ],
+          "role": "anonymous"
+        }
+      ]
+    },
+    "orderdetails": {
+      "source": "dbo.OrderDetails",
+      "permissions": [
+        {
+          "actions": [
+            "read",
+            "write"
+          ],
+          "role": "anonymous"
+        }
+      ]
+    }
+  }
+}

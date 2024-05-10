@@ -11,7 +11,9 @@
         {
           "actions": [
             "read",
-            "write"
+            "update",
+            "create",
+            "delete"
           ],
           "role": "anonymous"
         }
@@ -34,7 +36,9 @@
         {
           "actions": [
             "read",
-            "write"
+            "update",
+            "create",
+            "delete"
           ],
           "role": "anonymous"
         }
@@ -57,7 +61,9 @@
         {
           "actions": [
             "read",
-            "write"
+            "update",
+            "create",
+            "delete"
           ],
           "role": "anonymous"
         }

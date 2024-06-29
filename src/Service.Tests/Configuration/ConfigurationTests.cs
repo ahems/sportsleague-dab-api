@@ -19,7 +19,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using Azure.DataApiBuilder.Config;
-using Azure.DataApiBuilder.Config.NamingPolicies;
 using Azure.DataApiBuilder.Config.ObjectModel;
 using Azure.DataApiBuilder.Core.AuthenticationHelpers;
 using Azure.DataApiBuilder.Core.Authorization;
@@ -432,7 +431,7 @@ type Character {
     moons: [Moon],
 }
 
-type Planet @model(name:""Planet"") {
+type Planet @model(name:""PlanetAlias"") {
     id : ID!,
     name : String,
     character: Character
@@ -453,7 +452,7 @@ type Character {
     moons: Moon,
 }
 
-type Planet @model(name:""Planet"") {
+type Planet @model(name:""PlanetAlias"") {
     id : ID!,
     name : String,
     character: Character
@@ -653,10 +652,63 @@ type Moon {
         }
 
         /// <summary>
+        /// Validates that DAB supplements the PgSQL database connection strings with the property "ApplicationName" and
+        /// 1. Adds the property/value "Application Name=dab_oss_Major.Minor.Patch" when the env var DAB_APP_NAME_ENV is not set.
+        /// 2. Adds the property/value "Application Name=dab_hosted_Major.Minor.Patch" when the env var DAB_APP_NAME_ENV is set to "dab_hosted".
+        /// (DAB_APP_NAME_ENV is set in hosted scenario or when user sets the value.)
+        /// NOTE: "#pragma warning disable format" is used here to avoid removing intentional, readability promoting spacing in DataRow display names.
+        /// </summary>
+        /// <param name="configProvidedConnString">connection string provided in the config.</param>
+        /// <param name="expectedDabModifiedConnString">Updated connection string with Application Name.</param>
+        /// <param name="dabEnvOverride">Whether DAB_APP_NAME_ENV is set in environment. (Always present in hosted scenario or if user supplies value.)</param>
+        [DataTestMethod]
+        [DataRow("Host=foo;Username=testuser;", "Host=foo;Username=testuser;Application Name=", false, DisplayName = "[PGSQL]:DAB adds version 'dab_oss_major_minor_patch' to non-provided connection string property 'ApplicationName']")]
+        [DataRow("Host=foo;Username=testuser;", "Host=foo;Username=testuser;Application Name=", true, DisplayName = "[PGSQL]:DAB adds DAB_APP_NAME_ENV value 'dab_hosted' and version suffix '_major_minor_patch' to non-provided connection string property 'ApplicationName'.]")]
+        [DataRow("Host=foo;Username=testuser;Application Name=UserAppName", "Host=foo;Username=testuser;Application Name=UserAppName,", false, DisplayName = "[PGSQL]:DAB appends version 'dab_oss_major_minor_patch' to user supplied 'Application Name' property.]")]
+        [DataRow("Host=foo;Username=testuser;Application Name=UserAppName", "Host=foo;Username=testuser;Application Name=UserAppName,", true, DisplayName = "[PGSQL]:DAB appends version string 'dab_hosted' and version suffix '_major_minor_patch' to user supplied 'ApplicationName' property.]")]
+        public void PgSqlConnStringSupplementedWithAppNameProperty(
+            string configProvidedConnString,
+            string expectedDabModifiedConnString,
+            bool dabEnvOverride)
+        {
+            // Explicitly set the DAB_APP_NAME_ENV to null to ensure that the DAB_APP_NAME_ENV is not set.
+            if (dabEnvOverride)
+            {
+                Environment.SetEnvironmentVariable(ProductInfo.DAB_APP_NAME_ENV, "dab_hosted");
+            }
+            else
+            {
+                Environment.SetEnvironmentVariable(ProductInfo.DAB_APP_NAME_ENV, null);
+            }
+
+            // Resolve assembly version. Not possible to do in DataRow as DataRows expect compile-time constants.
+            string resolvedAssemblyVersion = ProductInfo.GetDataApiBuilderUserAgent();
+            expectedDabModifiedConnString += resolvedAssemblyVersion;
+
+            RuntimeConfig runtimeConfig = CreateBasicRuntimeConfigWithNoEntity(DatabaseType.PostgreSQL, configProvidedConnString);
+
+            // Act
+            bool configParsed = RuntimeConfigLoader.TryParseConfig(
+                runtimeConfig.ToJson(),
+                out RuntimeConfig updatedRuntimeConfig,
+                replaceEnvVar: true);
+
+            // Assert
+            Assert.AreEqual(
+                expected: true,
+                actual: configParsed,
+                message: "Runtime config unexpectedly failed parsing.");
+            Assert.AreEqual(
+                expected: expectedDabModifiedConnString,
+                actual: updatedRuntimeConfig.DataSource.ConnectionString,
+                message: "DAB did not properly set the 'Application Name' connection string property.");
+        }
+
+        /// <summary>
         /// Validates that DAB doesn't append nor modify
         /// - the 'Application Name' or 'App' properties in MySQL database connection strings.
         /// - the 'Application Name' property in
-        /// PostgreSQL, CosmosDB_PostgreSQl, CosmosDB_NoSQL database connection strings.
+        /// CosmosDB_PostgreSQL, CosmosDB_NoSQL database connection strings.
         /// This test validates that this behavior holds true when the DAB_APP_NAME_ENV environment variable
         /// - is set (dabEnvOverride==true) -> (DAB hosted)
         /// - is not set (dabEnvOverride==false) -> (DAB OSS).
@@ -673,10 +725,6 @@ type Moon {
         [DataRow(DatabaseType.MySQL, "Something;"                                 , "Something;"                                 , true , DisplayName = "[MYSQL|DAB hosted]:No addition of 'Application Name' or 'App' property to connection string.")]
         [DataRow(DatabaseType.MySQL, "Something;Application Name=CustAppName;"    , "Something;Application Name=CustAppName;"    , true , DisplayName = "[MYSQL|DAB hosted]:No modification of customer overridden 'Application Name' property.")]
         [DataRow(DatabaseType.MySQL, "Something1;App=CustAppName;Something2;"     , "Something1;App=CustAppName;Something2;"     , true, DisplayName = "[MySQL|DAB hosted]:No modification of customer overridden 'App' property.")]
-        [DataRow(DatabaseType.PostgreSQL, "Something;"                             , "Something;"                             , false, DisplayName = "[PGSQL|DAB OSS]:No addition of 'Application Name' property to connection string.]")]
-        [DataRow(DatabaseType.PostgreSQL, "Something;Application Name=CustAppName;", "Something;Application Name=CustAppName;", false, DisplayName = "[PGSQL|DAB OSS]:No modification of customer overridden 'Application Name' property.")]
-        [DataRow(DatabaseType.PostgreSQL, "Something;"                             , "Something;"                             , true , DisplayName = "[PGSQL|DAB hosted]:No addition of 'Application Name' property to connection string.")]
-        [DataRow(DatabaseType.PostgreSQL, "Something;Application Name=CustAppName;", "Something;Application Name=CustAppName;", true , DisplayName = "[PGSQL|DAB hosted]:No modification of customer overridden 'Application Name' property.")]
         [DataRow(DatabaseType.CosmosDB_NoSQL, "Something;"                             , "Something;"                             , false, DisplayName = "[COSMOSDB_NOSQL|DAB OSS]:No addition of 'Application Name' property to connection string.")]
         [DataRow(DatabaseType.CosmosDB_NoSQL, "Something;Application Name=CustAppName;", "Something;Application Name=CustAppName;", false, DisplayName = "[COSMOSDB_NOSQL|DAB OSS]:No modification of customer overridden 'Application Name' property.")]
         [DataRow(DatabaseType.CosmosDB_NoSQL, "Something;"                             , "Something;"                             , true , DisplayName = "[COSMOSDB_NOSQL|DAB hosted]:No addition of 'Application Name' property to connection string.")]
@@ -3019,67 +3067,55 @@ type Moon {
         }
 
         /// <summary>
-        /// When you query, DAB loads schema and check for defined entities in the config file which get load during DAB initialization, and
-        /// it fails during this check if entity is not defined in the config file. In this test case, we are testing the error message is appropriate.
+        /// GraphQL Schema types defined -> Character and Planet
+        /// DAB runtime config entities defined -> Planet(Not defined: Character)
+        /// Mismatch of entities and types between provided GraphQL schema file and DAB config results in actionable error message.
         /// </summary>
+        /// <exception cref="ApplicationException"></exception>
         [TestMethod, TestCategory(TestCategory.COSMOSDBNOSQL)]
-        public async Task TestErrorMessageWithoutKeyFieldsInConfig()
+        public void ValidateGraphQLSchemaEntityPresentInConfig()
         {
-            Dictionary<string, object> dbOptions = new();
-            HyphenatedNamingPolicy namingPolicy = new();
+            string GRAPHQL_SCHEMA = @"
+type Character {
+    id : ID,
+    name : String,
+}
 
-            dbOptions.Add(namingPolicy.ConvertName(nameof(CosmosDbNoSQLDataSourceOptions.Database)), "graphqldb");
-            dbOptions.Add(namingPolicy.ConvertName(nameof(CosmosDbNoSQLDataSourceOptions.Container)), "dummy");
-            dbOptions.Add(namingPolicy.ConvertName(nameof(CosmosDbNoSQLDataSourceOptions.Schema)), "custom-schema.gql");
-
-            DataSource dataSource = new(DatabaseType.CosmosDB_NoSQL,
-                GetConnectionStringFromEnvironmentConfig(environment: TestCategory.COSMOSDBNOSQL), Options: dbOptions);
-
-            // Add a dummy entity in config file just to make sure the config file is valid.
-            Entity entity = new(
-                Source: new("EntityName", EntitySourceType.Table, null, null),
-                Rest: new(Enabled: false),
-                GraphQL: new("", ""),
-                Permissions: new[] { GetMinimalPermissionConfig(AuthorizationResolver.ROLE_ANONYMOUS) },
-                Relationships: null,
-                Mappings: null
-            );
-            RuntimeConfig configuration = InitMinimalRuntimeConfig(dataSource, new(), new(), entity, "EntityName");
-
-            const string CUSTOM_CONFIG = "custom-config.json";
-
-            File.WriteAllText(CUSTOM_CONFIG, configuration.ToJson());
-
-            string[] args = new[]
+type Planet @model(name:""PlanetAlias"") {
+    id : ID!,
+    name : String,
+    characters : [Character]
+}";
+            // Read the base config from the file system
+            TestHelper.SetupDatabaseEnvironment(TestCategory.COSMOSDBNOSQL);
+            FileSystemRuntimeConfigLoader baseLoader = TestHelper.GetRuntimeConfigLoader();
+            if (!baseLoader.TryLoadKnownConfig(out RuntimeConfig baseConfig))
             {
-                $"--ConfigFileName={CUSTOM_CONFIG}"
-            };
-
-            using (TestServer server = new(Program.CreateWebHostBuilder(args)))
-            using (HttpClient client = server.CreateClient())
-            {
-                // When you query, DAB loads schema and check for defined entities in the config file and
-                // it fails during that, since entity is not defined in the config file.
-                string query = @"{
-                    Planet {
-                        items{
-                            id
-                        }
-                    }
-                }";
-
-                object payload = new { query };
-
-                HttpRequestMessage graphQLRequest = new(HttpMethod.Post, "/graphql")
-                {
-                    Content = JsonContent.Create(payload)
-                };
-
-                DataApiBuilderException ex = await Assert.ThrowsExceptionAsync<DataApiBuilderException>(async () => await client.SendAsync(graphQLRequest));
-                Assert.AreEqual("The entity 'Planet' was not found in the runtime config.", ex.Message);
-                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, ex.StatusCode);
-                Assert.AreEqual(DataApiBuilderException.SubStatusCodes.ConfigValidationError, ex.SubStatusCode);
+                throw new ApplicationException("Failed to load the default CosmosDB_NoSQL config and cannot continue with tests.");
             }
+
+            Dictionary<string, Entity> entities = new(baseConfig.Entities);
+            entities.Remove("Character");
+
+            RuntimeConfig runtimeConfig = new(Schema: baseConfig.Schema,
+                                             DataSource: baseConfig.DataSource,
+                                             Runtime: baseConfig.Runtime,
+                                             Entities: new(entities));
+
+            // Setup a mock file system, and use that one with the loader/provider for the config
+            MockFileSystem fileSystem = new(new Dictionary<string, MockFileData>()
+            {
+                { @"../schema.gql", new MockFileData(GRAPHQL_SCHEMA) },
+                { DEFAULT_CONFIG_FILE_NAME, new MockFileData(runtimeConfig.ToJson()) }
+            });
+            FileSystemRuntimeConfigLoader loader = new(fileSystem);
+            RuntimeConfigProvider provider = new(loader);
+
+            DataApiBuilderException exception =
+                Assert.ThrowsException<DataApiBuilderException>(() => new CosmosSqlMetadataProvider(provider, fileSystem));
+            Assert.AreEqual("The entity 'Character' was not found in the runtime config.", exception.Message);
+            Assert.AreEqual(HttpStatusCode.ServiceUnavailable, exception.StatusCode);
+            Assert.AreEqual(DataApiBuilderException.SubStatusCodes.ConfigValidationError, exception.SubStatusCode);
         }
 
         /// <summary>

@@ -165,9 +165,9 @@ namespace Azure.DataApiBuilder.Service.Services
                     FloatType => fieldValue.GetDouble(), // spec
                     SingleType => fieldValue.GetSingle(),
                     DecimalType => fieldValue.GetDecimal(),
-                    DateTimeType => DateTimeOffset.Parse(fieldValue.GetString()!, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal),
-                    DateType => DateTimeOffset.Parse(fieldValue.GetString()!),
-                    LocalTimeType => LocalTimePattern.ExtendedIso.Parse(fieldValue.GetString()!).Value,
+                    DateTimeType => DateTimeOffset.TryParse(fieldValue.GetString()!, DateTimeFormatInfo.InvariantInfo, DateTimeStyles.AssumeUniversal, out DateTimeOffset date) ? date : null, // for DW when datetime is null it will be in "" (double quotes) due to stringagg parsing and hence we need to ensure parsing is correct.
+                    DateType => DateTimeOffset.TryParse(fieldValue.GetString()!, out DateTimeOffset date) ? date : null,
+                    LocalTimeType => fieldValue.GetString()!.Equals("null", StringComparison.OrdinalIgnoreCase) ? null : LocalTimePattern.ExtendedIso.Parse(fieldValue.GetString()!).Value,
                     ByteArrayType => fieldValue.GetBytesFromBase64(),
                     BooleanType => fieldValue.GetBoolean(), // spec
                     UrlType => new Uri(fieldValue.GetString()!),
@@ -318,9 +318,9 @@ namespace Azure.DataApiBuilder.Service.Services
                 SupportedHotChocolateTypes.SHORT_TYPE => ((IntValueNode)value).ToInt16(),
                 SupportedHotChocolateTypes.INT_TYPE => ((IntValueNode)value).ToInt32(),
                 SupportedHotChocolateTypes.LONG_TYPE => ((IntValueNode)value).ToInt64(),
-                SupportedHotChocolateTypes.SINGLE_TYPE => ((FloatValueNode)value).ToSingle(),
-                SupportedHotChocolateTypes.FLOAT_TYPE => ((FloatValueNode)value).ToDouble(),
-                SupportedHotChocolateTypes.DECIMAL_TYPE => ((FloatValueNode)value).ToDecimal(),
+                SupportedHotChocolateTypes.SINGLE_TYPE => value is IntValueNode intValueNode ? intValueNode.ToSingle() : ((FloatValueNode)value).ToSingle(),
+                SupportedHotChocolateTypes.FLOAT_TYPE => value is IntValueNode intValueNode ? intValueNode.ToDouble() : ((FloatValueNode)value).ToDouble(),
+                SupportedHotChocolateTypes.DECIMAL_TYPE => value is IntValueNode intValueNode ? intValueNode.ToDecimal() : ((FloatValueNode)value).ToDecimal(),
                 SupportedHotChocolateTypes.UUID_TYPE => Guid.TryParse(value.Value!.ToString(), out Guid guidValue) ? guidValue : value.Value,
                 _ => value.Value
             };

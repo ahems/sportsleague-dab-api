@@ -1,15 +1,15 @@
-# Version values referenced from https://hub.docker.com/_/microsoft-dotnet-aspnet
+FROM mcr.microsoft.com/dotnet/sdk:6.0-cbl-mariner2.0 AS build
 
-FROM mcr.microsoft.com/dotnet/sdk:6.0-cbl-mariner2.0. AS build
+WORKDIR /config
 
+RUN dotnet new tool-manifest
 
-WORKDIR /src
-COPY [".", "./"]
-RUN dotnet build "./src/Service/Azure.DataApiBuilder.Service.csproj" -c Docker -o /out -r linux-x64
+RUN dotnet tool install Microsoft.DataApiBuilder
 
-FROM mcr.microsoft.com/dotnet/aspnet:6.0-cbl-mariner2.0 AS runtime
+RUN dotnet tool run dab -- init --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')"
 
-COPY --from=build /out /App
-WORKDIR /App
-ENV ASPNETCORE_URLS=http://+:5000
-ENTRYPOINT ["dotnet", "Azure.DataApiBuilder.Service.dll"]
+RUN dotnet tool run dab -- add Product --source "dbo.Products" --permissions "anonymous:read"
+
+FROM mcr.microsoft.com/azure-databases/data-api-builder
+
+COPY --from=build /config /App
